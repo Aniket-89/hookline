@@ -44,7 +44,7 @@ const ResultsSection = ({ adIdeas, onReset, formData }: ResultsSectionProps) => 
           <p className="text-muted-foreground mb-6">
             Ready-to-use ad ideas for your {formData.product} on {formData.platform}
           </p>
-          <div className="flex flex-wrap justify-center gap-3">
+          <div className="flex flex-wrap justify-center gap-3 mb-8">
             <button onClick={handleCopyAll} className="btn-secondary flex items-center gap-2">
               <Copy className="h-4 w-4" />
               Copy All
@@ -60,7 +60,7 @@ const ResultsSection = ({ adIdeas, onReset, formData }: ResultsSectionProps) => 
           </div>
         </div>
 
-        <div className="grid md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
           {adIdeas.map((idea, index) => (
             <div key={index} className="animate-bounce-in" style={{ animationDelay: `${index * 0.1}s` }}>
               <AdCard adIdea={idea} number={index + 1} />
