@@ -2,10 +2,10 @@
 import { ArrowDown } from "lucide-react";
 
 interface HeroSectionProps {
-  scrollToForm: () => void;
+  onGetStarted: () => void;
 }
 
-const HeroSection = ({ scrollToForm }: HeroSectionProps) => {
+const HeroSection = ({ onGetStarted }: HeroSectionProps) => {
   return (
     <section className="py-16 md:py-24 bg-gradient-to-b from-primary/10 to-background">
       <div className="container-custom">
@@ -17,7 +17,7 @@ const HeroSection = ({ scrollToForm }: HeroSectionProps) => {
             Just tell us what you sell, we'll do the rest. No logins. No jargon. Just results.
           </p>
           <button 
-            onClick={scrollToForm} 
+            onClick={onGetStarted} 
             className="btn-primary flex items-center gap-2 mx-auto"
           >
             Start Now

@@ -1,6 +1,9 @@
-
 import { FormData } from "@/components/FormSection";
-import { AdIdea } from "@/components/AdCard";
+import { GoogleGenAI, Modality } from "@google/genai";
+import { createClient } from 'pexels';
+
+const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
+const pexelsClient = createClient(import.meta.env.VITE_PEXELS_API_KEY);
 
 // Helper function to get platform-specific elements
 const getPlatformElements = (platform: string) => {
@@ -25,66 +28,414 @@ const getPlatformElements = (platform: string) => {
         ctas: ["Learn More", "Get Started", "Contact Now"],
         format: "banner ad or sponsored post",
       };
+  }
+};
+
+const sanitizeJsonString = (str: string): string => {
+  // Find the first '[' and last ']' to extract just the JSON array
+  const start = str.indexOf('[');
+  const end = str.lastIndexOf(']') + 1;
+  if (start === -1 || end === -1) {
+    throw new Error('No JSON array found in response');
+  }
+  return str.slice(start, end);
+};
+
+const generateAIImage = async (prompt: string, productImage?: string): Promise<string | null> => {
+  try {
+    console.log('🎨 Generating AI image with prompt:', prompt);
+    
+    // Format the prompt based on the visual suggestion and keywords
+    const structuredPrompt = productImage
+      ? `Professional product advertisement photograph: ${prompt}. Ensure clear visibility of the provided product image, maintaining its recognizable features while enhancing the scene around it. Leave sufficient negative space at the top for text overlay. Create a clean, commercial-quality composition with professional lighting and subtle shadows.`
+      : `Professional product advertisement photograph: ${prompt}. Create a clean commercial composition with negative space at top for text overlay, professional studio lighting with subtle shadows, optimized for social media advertising.`;
+
+    // If there's a product image, extract the base64 data and handle different formats
+    let imageData = '';
+    if (productImage) {
+      const matches = productImage.match(/^data:image\/(png|jpeg|jpg|webp);base64,(.+)$/);
+      if (matches) {
+        imageData = matches[2];
+      } else {
+        console.warn('Invalid image format, expected base64 data URL');
+        return null;
+      }
+    }
+
+    // Prepare contents array for the API
+    const contents = [
+      {
+        role: 'user',
+        parts: [
+          { text: structuredPrompt },
+          ...(imageData ? [{
+            inline_data: {
+              mime_type: 'image/jpeg',
+              data: imageData
+            }
+          }] : [])
+        ]
+      }
+    ];
+
+    const result = await ai.models.generateContent({
+      model: "gemini-2.0-flash-preview-image-generation",
+      contents,
+      config: {
+        responseModalities: [Modality.TEXT, Modality.IMAGE],
+      },
+    });
+
+    // Extract image data from response
+    if (result?.candidates?.[0]?.content?.parts) {
+      for (const part of result.candidates[0].content.parts) {
+        if (part.inlineData?.data) {
+          return `data:image/png;base64,${part.inlineData.data}`;
+        }
+      }
+    }
+    
+    throw new Error('No image data in response');
+  } catch (error) {
+    console.error('❌ Error generating AI image:', error);
+    if (error.message?.includes('inline_data')) {
+      console.error('Image format error - make sure the image is in a supported format (JPG, PNG)');
+    }
+    return null;
+  }
+};
+
+interface PexelsPhoto {
+  src: {
+    medium: string;
+    large: string;
+    original: string;
   };
+}
+
+interface PexelsResponse {
+  photos?: PexelsPhoto[];
+  error?: string;
+}
+
+interface VisualKeywords {
+  subject: string;    // Main subject of the image
+  action: string;     // What the subject is doing
+  mood: string;       // Emotional tone of the image
+  setting: string;    // Location or context
+}
+
+interface AdIdea {
+  hook: string;
+  caption: string;
+  visualSuggestion: string;
+  keywords: VisualKeywords;
+  imageUrl?: string;
+  imageType?: "ai" | "stock";
+}
+
+// Enhanced prompt generation function
+const generateImagePrompt = (
+  product: string,
+  audience: string,
+  platform: string,
+  visualStyle: string,
+  keywords: VisualKeywords,
+  visualSuggestion?: string
+): string => {
+  // Get platform-specific styling
+  const platformStyle = platform === "Instagram" 
+    ? "Instagram-worthy lifestyle shot"
+    : platform === "Facebook" 
+      ? "Facebook-optimized commercial photo"
+      : "Professional social media advertisement";
+
+  // Combine all inputs into a structured prompt
+  return `${platformStyle} featuring ${product} ${keywords.action} in a ${keywords.mood} ${keywords.setting} environment. Scene styled to appeal to ${audience}, with ${visualStyle} aesthetic. ${visualSuggestion || ''}`;
 };
 
-// Generate hooks based on product type
-const generateHook = (product: string, customers: string, uniqueFeature: string) => {
-  const hooks = [
-    `"Tired of ordinary ${product.toLowerCase()}? Discover what makes ours different."`,
-    `"Attention ${customers}: This ${product.toLowerCase()} will change how you think about [category]."`,
-    `"The secret to better [benefit] is here. Introducing our ${uniqueFeature.toLowerCase()} ${product.toLowerCase()}."`,
-    `"[Problem]? Our ${product.toLowerCase()} with ${uniqueFeature.toLowerCase()} is the solution you've been searching for."`,
-    `"This ${product.toLowerCase()} has helped thousands of ${customers.toLowerCase()} achieve [desired outcome]."`,
-    `"What if you could [desired outcome] with just one ${product.toLowerCase()}?"`,
-  ];
-  
-  // Shuffle and pick different hooks
-  return hooks.sort(() => 0.5 - Math.random());
+const searchPexelsImages = async (
+  keywords: VisualKeywords, 
+  count: number = 3,
+  productImage?: string,
+  useAI: boolean = false,
+  visualSuggestion?: string,
+  platform: string = "Instagram"
+): Promise<{ urls: string[], type: "ai" | "stock" }> => {
+  // If product image is provided and not using AI, use it directly
+  if (productImage && !useAI) {
+    console.log('📸 Using provided product image');
+    return { urls: [productImage], type: "stock" };
+  }
+
+  if (useAI) {
+    // Generate optimized prompt using the new format
+    const enhancedPrompt = generateImagePrompt(
+      keywords.subject,
+      "target audience",
+      platform,
+      keywords.mood,
+      keywords,
+      visualSuggestion
+    );
+
+    // Pass both the enhanced prompt and product image if available
+    const imageUrl = await generateAIImage(enhancedPrompt, productImage);
+    if (imageUrl) {
+      return { urls: [imageUrl], type: "ai" };
+    }
+    // Fall back to stock photos if AI generation fails
+    console.log('⚠️ AI image generation failed, falling back to stock photos');
+  }
+
+  try {
+    // Create search queries with different keyword combinations
+    const searchQueries = [
+      `${keywords.subject} ${keywords.action}`,
+      `${keywords.subject} ${keywords.mood}`,
+      `${keywords.subject} ${keywords.setting}`,
+      `${keywords.mood} ${keywords.setting} ${keywords.subject}`,
+    ].map(query => query.toLowerCase());
+
+    let allImages: string[] = [];
+
+    // Try each query until we have enough unique images
+    for (const query of searchQueries) {
+      console.log('🔍 Searching Pexels for:', query, 'Count:', count);
+      const result = await pexelsClient.photos.search({
+        query,
+        per_page: count + 3,
+        orientation: 'square'
+      }) as PexelsResponse;
+      
+      if (result.photos?.length) {
+        const newImages = result.photos
+          .filter(photo => photo.src?.medium)
+          .map(photo => photo.src.medium);
+        
+        // Add new unique images
+        allImages = [...new Set([...allImages, ...newImages])];
+        
+        if (allImages.length >= count) {
+          console.log(`✅ Found ${allImages.length} images using query: ${query}`);
+          break;
+        }
+      }
+    }
+
+    // Shuffle and return requested number of images
+    return { urls: allImages.sort(() => Math.random() - 0.5).slice(0, count), type: "stock" };
+  } catch (error) {
+    console.error('❌ Error fetching images from Pexels:', error);
+    return { urls: [], type: "stock" };
+  }
 };
 
-// Generate captions
-const generateCaption = (product: string, customers: string, uniqueFeature: string, platform: string) => {
-  const { ctas } = getPlatformElements(platform);
-  const randomCta = ctas[Math.floor(Math.random() * ctas.length)];
-  
-  const captions = [
-    `Introducing our ${uniqueFeature.toLowerCase()} ${product.toLowerCase()} designed specifically for ${customers.toLowerCase()}. We've spent years perfecting this to ensure you get the [benefit] you deserve. No more [pain point]! [Emoji] ${randomCta}!`,
+const generateAdContent = async (
+  product: string,
+  customers: string,
+  uniqueFeature: string,
+  platform: string,
+  productImage?: string,
+  preferredImageType: "ai" | "stock" | "mixed" = "mixed"
+) => {
+  console.log('🎯 Generating ad content with params:', { 
+    product, 
+    customers, 
+    uniqueFeature, 
+    platform,
+    hasProductImage: !!productImage 
+  });
+
+  const prompt = `You are an expert social media ad copywriter. Generate exactly 3 ads in valid JSON format.
+
+IMPORTANT: Your entire response must be valid JSON. Do not include any extra text, markdown, or formatting.
+Respond with only a JSON array containing exactly 3 objects.
+
+Create ads for:
+Product: ${product}
+Target Audience: ${customers}
+Unique Feature: ${uniqueFeature}
+Platform: ${platform}
+
+Required JSON format:
+[
+  {
+    "hook": "attention-grabbing headline under 100 chars",
+    "caption": "compelling body text (platform appropriate)",
+    "visualSuggestion": "brief description of the image",
+    "keywords": {
+      "subject": "main subject or focus (1-2 words)",
+      "action": "what the subject is doing (1-2 words)",
+      "mood": "emotional tone (1 word: happy, peaceful, energetic, etc)",
+      "setting": "location or context (1-2 words)"
+    }
+  }
+]
+
+Guidelines:
+- Make each ad's keywords distinctly different from others
+- Use simple, common words for keywords that work well with stock photos
+- Hooks: Short, punchy, under 100 characters
+- Captions: Concise, engaging, match ${platform}'s style
+- Each ad should have a different mood and setting
+- Focus on lifestyle and emotional appeal`;
+
+  try {
+    console.log('🚀 Sending request to Gemini API...');
+    const response = await ai.models.generateContent({
+      model: "gemini-2.0-flash",
+      contents: prompt,
+    });
     
-    `Our ${product.toLowerCase()} isn't for everyone. But if you're serious about [desired outcome], you'll love how our ${uniqueFeature.toLowerCase()} feature makes all the difference. Made with [quality detail] for ${customers.toLowerCase()} who expect more. ${randomCta} [Emoji]`,
+    const text = response.text;
+    console.log('📄 Raw response text:', text);
     
-    `We created this ${product.toLowerCase()} because we were frustrated with [problem]. Now, thanks to our ${uniqueFeature.toLowerCase()}, ${customers.toLowerCase()} like you can finally enjoy [benefit] without worrying about [pain point]. ${randomCta}!`,
-  ];
-  
-  return captions.sort(() => 0.5 - Math.random());
+    try {
+      let parsedResponse: Array<AdIdea>;
+      try {
+        parsedResponse = JSON.parse(text) as Array<AdIdea>;
+      } catch (firstParseError) {
+        const sanitized = sanitizeJsonString(text);
+        parsedResponse = JSON.parse(sanitized) as Array<AdIdea>;
+      }
+
+      if (!Array.isArray(parsedResponse) || parsedResponse.length !== 3) {
+        throw new Error('Invalid response structure: expected array of 3 items');
+      }
+
+      // Validate and clean up keywords
+      parsedResponse = parsedResponse.map(ad => ({
+        ...ad,
+        keywords: {
+          subject: ad.keywords?.subject?.toLowerCase()?.trim() || product,
+          action: ad.keywords?.action?.toLowerCase()?.trim() || 'using',
+          mood: ad.keywords?.mood?.toLowerCase()?.trim() || 'happy',
+          setting: ad.keywords?.setting?.toLowerCase()?.trim() || 'lifestyle'
+        }
+      }));
+
+      // Get different images for all ads in parallel
+      console.log('🖼️ Fetching different images for ads...');
+      const adsWithImages = await Promise.all(
+        parsedResponse.map(async (ad, index) => {
+          // Determine whether to use AI based on preference
+          const useAI = preferredImageType === "ai" || 
+            (preferredImageType === "mixed" && index % 2 === 1);
+          const { urls, type } = await searchPexelsImages(
+            ad.keywords, 
+            1,
+            index === 0 ? productImage : undefined,
+            useAI,
+            ad.visualSuggestion,
+            platform
+          );
+          return {
+            ...ad,
+            imageUrl: urls[0],
+            imageType: type
+          };
+        })
+      );
+
+      console.log('✨ Successfully generated ads with different images:', adsWithImages);
+      return adsWithImages;
+
+    } catch (parseError) {
+      console.error('❌ Failed to parse JSON response:', parseError);
+      throw new Error(`Failed to parse Gemini response as JSON: ${parseError.message}`);
+    }
+  } catch (error) {
+    console.error('❌ Error generating ad content:', error);
+    console.log('⚠️ Falling back to default templates');
+    
+    const { ctas, format } = getPlatformElements(platform);
+    
+    // Create distinctly different fallback ads
+    const fallbackAds = await Promise.all(
+      [
+        {
+          mood: 'happy',
+          action: 'using',
+          setting: 'home',
+          style: 'lifestyle',
+          useAI: false
+        },
+        {
+          mood: 'excited',
+          action: 'enjoying',
+          setting: 'outdoors',
+          style: 'action',
+          useAI: true
+        },
+        {
+          mood: 'peaceful',
+          action: 'showcasing',
+          setting: 'studio',
+          style: 'professional',
+          useAI: false
+        }
+      ].map(async (variation, i) => {
+        const keywords: VisualKeywords = {
+          subject: product.toLowerCase(),
+          action: variation.action,
+          mood: variation.mood,
+          setting: variation.setting
+        };
+        
+        // Use product image for the first fallback ad if provided
+        const visualSuggestion = [
+          `${format} showing ${keywords.mood} person ${keywords.action} ${product} at ${keywords.setting}`,
+          `${format} capturing ${keywords.mood} moment with ${product} in ${keywords.setting}`,
+          `${format} featuring professional ${keywords.action} of ${product} in ${keywords.setting}`
+        ][i];
+
+        const { urls, type } = await searchPexelsImages(
+          keywords,
+          1,
+          i === 0 ? productImage : undefined,
+          variation.useAI,
+          visualSuggestion
+        );
+        
+        return {
+          hook: [
+            `Discover our innovative ${product}`,
+            `Transform your life with our ${product}`,
+            `Experience the magic of our ${product}`
+          ][i],
+          caption: [
+            `Designed for ${customers}, featuring ${uniqueFeature}. ${ctas[0]}!`,
+            `Perfect for ${customers}. ${uniqueFeature} makes all the difference. ${ctas[Math.min(1, ctas.length - 1)]}!`,
+            `Join countless ${customers} who love our ${uniqueFeature}. ${ctas[Math.min(2, ctas.length - 1)]}!`
+          ][i],
+          visualSuggestion: [
+            `${format} showing ${keywords.mood} person ${keywords.action} ${product} at ${keywords.setting}`,
+            `${format} capturing ${keywords.mood} moment with ${product} in ${keywords.setting}`,
+            `${format} featuring professional ${keywords.action} of ${product} in ${keywords.setting}`
+          ][i],
+          keywords,
+          imageUrl: urls[0],
+          imageType: type
+        };
+      })
+    );
+    
+    console.log('🔄 Generated fallback ads with different images:', fallbackAds);
+    return fallbackAds;
+  }
 };
 
-// Generate visual suggestions
-const generateVisualSuggestion = (product: string, uniqueFeature: string, platform: string) => {
-  const { format } = getPlatformElements(platform);
-  
-  const suggestions = [
-    `${format} showing the ${product.toLowerCase()} being used by a satisfied customer, highlighting the ${uniqueFeature.toLowerCase()} feature with text overlay explaining the benefits.`,
-    
-    `Before/after ${format} demonstrating the problem without your ${product.toLowerCase()} and the solution with it. Focus on capturing the emotional benefit.`,
-    
-    `Close-up detail ${format} of your ${product.toLowerCase()}'s ${uniqueFeature.toLowerCase()} with bright, attention-grabbing colors and simple text highlighting your main selling point.`,
-  ];
-  
-  return suggestions.sort(() => 0.5 - Math.random());
-};
-
-export const generateAdIdeas = (formData: FormData): AdIdea[] => {
-  const { product, customers, uniqueFeature, platform } = formData;
-  
-  const hooks = generateHook(product, customers, uniqueFeature);
-  const captions = generateCaption(product, customers, uniqueFeature, platform);
-  const visualSuggestions = generateVisualSuggestion(product, uniqueFeature, platform);
-  
-  // Create 3 ad ideas
-  return Array.from({ length: 3 }, (_, i) => ({
-    hook: hooks[i],
-    caption: captions[i],
-    visualSuggestion: visualSuggestions[i],
-  }));
+export const generateAdIdeas = async (formData: FormData): Promise<AdIdea[]> => {
+  console.log('📥 Received form data:', formData);
+  const { product, customers, uniqueFeature, platform, productImage } = formData;
+  const result = await generateAdContent(
+    product,
+    customers,
+    uniqueFeature,
+    platform,
+    productImage
+  );
+  console.log('📤 Returning final ad ideas:', result);
+  return result;
 };

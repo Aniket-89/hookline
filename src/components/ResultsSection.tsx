@@ -1,12 +1,12 @@
-
 import { Copy, Download, RefreshCw } from "lucide-react";
 import AdCard, { AdIdea } from "./AdCard";
 import { toast } from "@/components/ui/use-toast";
+import { FormData } from "./FormSection";
 
 interface ResultsSectionProps {
   adIdeas: AdIdea[];
   onReset: () => void;
-  formData: any;
+  formData: FormData;
 }
 
 const ResultsSection = ({ adIdeas, onReset, formData }: ResultsSectionProps) => {
