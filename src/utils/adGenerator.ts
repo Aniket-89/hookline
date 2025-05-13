@@ -134,101 +134,39 @@ interface AdIdea {
   imageType?: "ai" | "stock";
 }
 
-// Enhanced prompt generation function
-const generateImagePrompt = (
-  product: string,
-  audience: string,
-  platform: string,
-  visualStyle: string,
-  keywords: VisualKeywords,
-  visualSuggestion?: string
-): string => {
-  // Get platform-specific styling
-  const platformStyle = platform === "Instagram" 
-    ? "Instagram-worthy lifestyle shot"
-    : platform === "Facebook" 
-      ? "Facebook-optimized commercial photo"
-      : "Professional social media advertisement";
-
-  // Combine all inputs into a structured prompt
-  return `${platformStyle} featuring ${product} ${keywords.action} in a ${keywords.mood} ${keywords.setting} environment. Scene styled to appeal to ${audience}, with ${visualStyle} aesthetic. ${visualSuggestion || ''}`;
-};
-
 const searchPexelsImages = async (
   keywords: VisualKeywords, 
   count: number = 3,
   productImage?: string,
-  useAI: boolean = false,
+  useAI: boolean = true,
   visualSuggestion?: string,
   platform: string = "Instagram"
 ): Promise<{ urls: string[], type: "ai" | "stock" }> => {
-  // If product image is provided and not using AI, use it directly
-  if (productImage && !useAI) {
-    console.log('📸 Using provided product image');
-    return { urls: [productImage], type: "stock" };
-  }
-
-  if (useAI) {
-    // Generate optimized prompt using the new format
-    const enhancedPrompt = generateImagePrompt(
-      keywords.subject,
-      "target audience",
-      platform,
-      keywords.mood,
-      keywords,
-      visualSuggestion
-    );
-
-    // Pass both the enhanced prompt and product image if available
-    const imageUrl = await generateAIImage(enhancedPrompt, productImage);
-    if (imageUrl) {
-      return { urls: [imageUrl], type: "ai" };
-    }
-    // Fall back to stock photos if AI generation fails
-    console.log('⚠️ AI image generation failed, falling back to stock photos');
-  }
-
+  // First, optimize the visual suggestion through Gemini
+  const promptOptimizationRequest = `Take this visual suggestion and turn it into a full image generation prompt suitable for gemini. Keep it under 2 sentences:
+  ${visualSuggestion || `Professional product featuring ${keywords.subject} ${keywords.action} in a ${keywords.mood} ${keywords.setting} environment`}`;
+  
+  let enhancedPrompt = visualSuggestion;
   try {
-    // Create search queries with different keyword combinations
-    const searchQueries = [
-      `${keywords.subject} ${keywords.action}`,
-      `${keywords.subject} ${keywords.mood}`,
-      `${keywords.subject} ${keywords.setting}`,
-      `${keywords.mood} ${keywords.setting} ${keywords.subject}`,
-    ].map(query => query.toLowerCase());
-
-    let allImages: string[] = [];
-
-    // Try each query until we have enough unique images
-    for (const query of searchQueries) {
-      console.log('🔍 Searching Pexels for:', query, 'Count:', count);
-      const result = await pexelsClient.photos.search({
-        query,
-        per_page: count + 3,
-        orientation: 'square'
-      }) as PexelsResponse;
-      
-      if (result.photos?.length) {
-        const newImages = result.photos
-          .filter(photo => photo.src?.medium)
-          .map(photo => photo.src.medium);
-        
-        // Add new unique images
-        allImages = [...new Set([...allImages, ...newImages])];
-        
-        if (allImages.length >= count) {
-          console.log(`✅ Found ${allImages.length} images using query: ${query}`);
-          break;
-        }
-      }
-    }
-
-    // Shuffle and return requested number of images
-    return { urls: allImages.sort(() => Math.random() - 0.5).slice(0, count), type: "stock" };
+    const optimizationResponse = await ai.models.generateContent({
+      model: "gemini-2.0-flash",
+      contents: promptOptimizationRequest,
+    });
+    enhancedPrompt = optimizationResponse.text.trim();
+    console.log('🎨 Optimized prompt:', enhancedPrompt);
   } catch (error) {
-    console.error('❌ Error fetching images from Pexels:', error);
-    return { urls: [], type: "stock" };
+    console.warn('⚠️ Failed to optimize prompt, using original:', error);
   }
+
+  // Generate AI image using the prompt
+  const imageUrl = await generateAIImage(enhancedPrompt, productImage);
+  if (imageUrl) {
+    return { urls: [imageUrl], type: "ai" };
+  }
+
+  // If AI generation fails, return empty result
+  console.error('❌ AI image generation failed');
+  return { urls: [], type: "ai" };
 };
 
 const generateAdContent = async (
@@ -263,7 +201,7 @@ Required JSON format:
   {
     "hook": "attention-grabbing headline under 100 chars",
     "caption": "compelling body text (platform appropriate)",
-    "visualSuggestion": "brief description of the image",
+    "visualSuggestion": "detailed visual description for AI image generation, focus on composition, lighting, mood, and styling",
     "keywords": {
       "subject": "main subject or focus (1-2 words)",
       "action": "what the subject is doing (1-2 words)",
@@ -315,18 +253,15 @@ Guidelines:
         }
       }));
 
-      // Get different images for all ads in parallel
-      console.log('🖼️ Fetching different images for ads...');
+      // Generate AI images for all ads using their visual prompts
+      console.log('🖼️ Generating AI images for ads...');
       const adsWithImages = await Promise.all(
         parsedResponse.map(async (ad, index) => {
-          // Determine whether to use AI based on preference
-          const useAI = preferredImageType === "ai" || 
-            (preferredImageType === "mixed" && index % 2 === 1);
           const { urls, type } = await searchPexelsImages(
-            ad.keywords, 
+            ad.keywords,
             1,
             index === 0 ? productImage : undefined,
-            useAI,
+            true, // Always use AI
             ad.visualSuggestion,
             platform
           );
@@ -359,7 +294,7 @@ Guidelines:
           action: 'using',
           setting: 'home',
           style: 'lifestyle',
-          useAI: false
+          useAI: true // Always use AI
         },
         {
           mood: 'excited',
@@ -373,7 +308,7 @@ Guidelines:
           action: 'showcasing',
           setting: 'studio',
           style: 'professional',
-          useAI: false
+          useAI: true
         }
       ].map(async (variation, i) => {
         const keywords: VisualKeywords = {
@@ -385,9 +320,9 @@ Guidelines:
         
         // Use product image for the first fallback ad if provided
         const visualSuggestion = [
-          `${format} showing ${keywords.mood} person ${keywords.action} ${product} at ${keywords.setting}`,
-          `${format} capturing ${keywords.mood} moment with ${product} in ${keywords.setting}`,
-          `${format} featuring professional ${keywords.action} of ${product} in ${keywords.setting}`
+          `Professional lifestyle ${format} showing ${keywords.mood} person ${keywords.action} ${product} in a well-lit ${keywords.setting} setting. Composition optimized for social media with negative space for text overlay. Natural, authentic feel with professional lighting.`,
+          `Dynamic commercial ${format} capturing ${keywords.mood} moment with ${product} in an aesthetic ${keywords.setting} environment. Soft, diffused lighting with subtle shadows. Modern, aspirational composition with room for text.`,
+          `Premium product ${format} featuring ${product} being ${keywords.action} in a ${keywords.mood} ${keywords.setting} scene. Studio-quality lighting with clean shadows. Minimalist, high-end composition with perfect balance.`
         ][i];
 
         const { urls, type } = await searchPexelsImages(
