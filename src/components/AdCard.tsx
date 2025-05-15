@@ -1,7 +1,6 @@
 import { Card } from "@/components/ui/card";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Download, Palette, Image, Sparkles, Heart, MessageCircle, Share2, Bookmark } from "lucide-react";
+import { Download, Image, Sparkles, Heart, MessageCircle, Share2, Bookmark } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,6 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useState, useRef } from "react";
 import { toast } from "@/components/ui/use-toast";
+import html2canvas from "html2canvas";
 
 interface Keywords {
   subject: string;
@@ -39,6 +39,7 @@ const AdCard = ({ adIdea, number }: AdCardProps) => {
   const [isLiked, setIsLiked] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
+  const imageRef = useRef<HTMLDivElement>(null);
   
   const colors = [
     "bg-gradient-to-br from-purple-200 to-purple-400",
@@ -51,7 +52,7 @@ const AdCard = ({ adIdea, number }: AdCardProps) => {
   const randomColor = colors[number % colors.length];
 
   const downloadImage = async () => {
-    if (!adIdea.imageUrl) {
+    if (!adIdea.imageUrl && !imageRef.current) {
       toast({
         title: "No image available",
         description: "This ad doesn't have an image to download.",
@@ -61,49 +62,53 @@ const AdCard = ({ adIdea, number }: AdCardProps) => {
     }
 
     try {
-      const response = await fetch(adIdea.imageUrl);
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `ad-${number}-image.jpg`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-      
-      toast({
-        title: "Image downloaded!",
-        description: "The image has been saved to your downloads folder."
-      });
+      if (imageRef.current) {
+        // Show overlay before capturing
+        const overlay = imageRef.current.querySelector('.group-hover\\:opacity-100') as HTMLElement;
+        if (overlay) {
+          overlay.style.opacity = '1';
+        }
+
+        // Capture the image section with html2canvas
+        const canvas = await html2canvas(imageRef.current, {
+          backgroundColor: null,
+          scale: 2, // Higher quality
+        });
+
+        // Reset overlay opacity
+        if (overlay) {
+          overlay.style.opacity = '';
+        }
+
+        // Convert to blob and download
+        const blob = await new Promise<Blob>((resolve) => {
+          canvas.toBlob((b) => {
+            if (b) resolve(b);
+          }, 'image/png', 1.0);
+        });
+
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `ad-${number}-with-overlay.png`;
+        document.body.appendChild(a);
+        a.click();
+        URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        
+        toast({
+          title: "Image downloaded!",
+          description: "The ad has been saved with the overlay text."
+        });
+      }
     } catch (error) {
+      console.error('Download error:', error);
       toast({
         title: "Download failed",
         description: "There was an error downloading the image.",
         variant: "destructive"
       });
     }
-  };
-
-  const openInCanva = () => {
-    // Encode ad details for Canva template
-    const templateData = {
-      heading: adIdea.hook,
-      subtext: adIdea.caption,
-      image: adIdea.imageUrl,
-      backgroundColor: randomColor.split(' ')[1], // Use the 'from' color
-    };
-
-    const canvaUrl = new URL('https://www.canva.com/design/create');
-    canvaUrl.searchParams.append('type', 'social-media');
-    canvaUrl.searchParams.append('template', JSON.stringify(templateData));
-    
-    window.open(canvaUrl.toString(), '_blank');
-    
-    toast({
-      title: "Opening Canva",
-      description: "The template will open in a new tab. You may need to log in to Canva."
-    });
   };
 
   return (
@@ -138,7 +143,7 @@ const AdCard = ({ adIdea, number }: AdCardProps) => {
       </div>
 
       {/* Image Section */}
-      <div className="relative group">
+      <div className="relative group" ref={imageRef}>
         <AspectRatio ratio={1 / 1}>
           <div className={`w-full h-full flex items-center justify-center ${!adIdea.imageUrl || !imageLoaded || imageError ? randomColor : ''}`}>
             {adIdea.imageUrl && !imageError && (
@@ -150,7 +155,7 @@ const AdCard = ({ adIdea, number }: AdCardProps) => {
                 onError={() => setImageError(true)}
               />
             )}
-            {/* Hook overlay on hover */}
+            {/* Hook overlay for download */}
             <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center p-6">
               <p className="text-white font-bold text-xl text-center leading-tight">
                 {adIdea.hook}
@@ -161,6 +166,14 @@ const AdCard = ({ adIdea, number }: AdCardProps) => {
         
         {/* Action buttons overlay */}
         <div className="absolute top-4 right-4 flex gap-2">
+          <Button 
+            variant="secondary" 
+            size="icon"
+            className="h-8 w-8 bg-white/90 hover:bg-white shadow-sm"
+            onClick={downloadImage}
+          >
+            <Download className="h-4 w-4" />
+          </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button 
@@ -175,10 +188,6 @@ const AdCard = ({ adIdea, number }: AdCardProps) => {
               <DropdownMenuItem onClick={downloadImage}>
                 <Download className="mr-2 h-4 w-4" />
                 Download Image
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={openInCanva}>
-                <Palette className="mr-2 h-4 w-4" />
-                Open in Canva
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

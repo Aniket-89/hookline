@@ -10,22 +10,24 @@ interface FormSectionProps {
 }
 
 export interface FormData {
+  companyName: string;
   product: string;
   customers: string;
   uniqueFeature: string;
   platform: "Facebook" | "Instagram" | "WhatsApp";
   productImage?: string; // Base64 encoded image
-  preferredImageType: "ai" | "stock" | "mixed";
+  preferredImageType: "ai" | "stock";
 }
 
 const FormSection = ({ onSubmit, isLoading }: FormSectionProps) => {
   const { toast } = useToast();
   const [formData, setFormData] = useState<FormData>({
+    companyName: "",
     product: "",
     customers: "",
     uniqueFeature: "",
     platform: "Facebook",
-    preferredImageType: "mixed"
+    preferredImageType: "ai"
   });
   const [imagePreview, setImagePreview] = useState<string | null>(null);
 
@@ -108,6 +110,22 @@ const FormSection = ({ onSubmit, isLoading }: FormSectionProps) => {
 
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
+              
+              <label htmlFor="product" className="block text-sm font-medium mb-2">
+                What's your company?
+              </label>
+              <input
+                id="companyName"
+                name="companyName"
+                type="text"
+                value={formData.companyName}
+                onChange={(e) => handleInputChange("companyName", e.target.value)}
+                placeholder="Enter you company name"
+                className="input-field"
+              />
+            </div>
+            <div>
+              
               <label htmlFor="product" className="block text-sm font-medium mb-2">
                 What do you sell?
               </label>
@@ -231,18 +249,7 @@ const FormSection = ({ onSubmit, isLoading }: FormSectionProps) => {
                   <Image className="h-4 w-4" />
                   Stock Photos
                 </button>
-                <button
-                  type="button"
-                  onClick={() => handleInputChange("preferredImageType", "mixed")}
-                  className={`flex-1 flex items-center justify-center gap-2 p-3 rounded-lg border transition-colors ${
-                    formData.preferredImageType === "mixed"
-                      ? "bg-primary text-primary-foreground border-primary"
-                      : "border-gray-200 hover:border-gray-300"
-                  }`}
-                >
-                  <Image className="h-4 w-4" />
-                  Mixed
-                </button>
+
               </div>
             </div>
 

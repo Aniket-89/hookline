@@ -142,42 +142,92 @@ const searchPexelsImages = async (
   visualSuggestion?: string,
   platform: string = "Instagram"
 ): Promise<{ urls: string[], type: "ai" | "stock" }> => {
-  // First, optimize the visual suggestion through Gemini
-  const promptOptimizationRequest = `Take this visual suggestion and turn it into a full image generation prompt suitable for gemini. Keep it under 2 sentences:
-  ${visualSuggestion || `Professional product featuring ${keywords.subject} ${keywords.action} in a ${keywords.mood} ${keywords.setting} environment`}`;
-  
-  let enhancedPrompt = visualSuggestion;
+  // If product image is provided, use it directly
+  if (productImage) {
+    return { urls: [productImage], type: "stock" };
+  }
+
+  // For AI generation
+  if (useAI) {
+    // First, optimize the visual suggestion through Gemini
+    const promptOptimizationRequest = `Take this visual suggestion and turn it into a full image generation prompt suitable for gemini. Keep it under 2 sentences:
+    ${visualSuggestion || `Professional product featuring ${keywords.subject} ${keywords.action} in a ${keywords.mood} ${keywords.setting} environment`}`;
+    
+    let enhancedPrompt = visualSuggestion;
+    try {
+      const optimizationResponse = await ai.models.generateContent({
+        model: "gemini-2.0-flash",
+        contents: promptOptimizationRequest,
+      });
+      enhancedPrompt = optimizationResponse.text.trim();
+      console.log('🎨 Optimized prompt:', enhancedPrompt);
+    } catch (error) {
+      console.warn('⚠️ Failed to optimize prompt, using original:', error);
+    }
+
+    const imageUrl = await generateAIImage(enhancedPrompt, productImage);
+    if (imageUrl) {
+      return { urls: [imageUrl], type: "ai" };
+    }
+  }
+
+  // For stock photos or if AI generation fails
   try {
-    const optimizationResponse = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
-      contents: promptOptimizationRequest,
-    });
-    enhancedPrompt = optimizationResponse.text.trim();
-    console.log('🎨 Optimized prompt:', enhancedPrompt);
+    const searchQueries = [
+      `${keywords.subject} ${keywords.action}`,
+      `${keywords.subject} ${keywords.mood}`,
+      `${keywords.subject} ${keywords.setting}`,
+      `${keywords.mood} ${keywords.setting} ${keywords.subject}`,
+    ].map(query => query.toLowerCase());
+
+    let allImages: string[] = [];
+
+    // Try each query until we have enough unique images
+    for (const query of searchQueries) {
+      console.log('🔍 Searching Pexels for:', query);
+      const result = await pexelsClient.photos.search({
+        query,
+        per_page: count + 3,
+        orientation: 'square'
+      }) as PexelsResponse;
+      
+      if (result.photos?.length) {
+        const newImages = result.photos
+          .filter(photo => photo.src?.medium)
+          .map(photo => photo.src.medium);
+        
+        allImages = [...new Set([...allImages, ...newImages])];
+        
+        if (allImages.length >= count) {
+          console.log(`✅ Found ${allImages.length} stock photos`);
+          return { urls: allImages.sort(() => Math.random() - 0.5).slice(0, count), type: "stock" };
+        }
+      }
+    }
+
+    if (allImages.length > 0) {
+      return { urls: allImages, type: "stock" };
+    }
+    
+    console.error('❌ No stock photos found');
+    return { urls: [], type: "stock" };
   } catch (error) {
-    console.warn('⚠️ Failed to optimize prompt, using original:', error);
+    console.error('❌ Error fetching stock photos:', error);
+    return { urls: [], type: "stock" };
   }
-
-  // Generate AI image using the prompt
-  const imageUrl = await generateAIImage(enhancedPrompt, productImage);
-  if (imageUrl) {
-    return { urls: [imageUrl], type: "ai" };
-  }
-
-  // If AI generation fails, return empty result
-  console.error('❌ AI image generation failed');
-  return { urls: [], type: "ai" };
 };
 
 const generateAdContent = async (
+  companyName: string,
   product: string,
   customers: string,
   uniqueFeature: string,
   platform: string,
   productImage?: string,
-  preferredImageType: "ai" | "stock" | "mixed" = "mixed"
+  preferredImageType: "ai" | "stock" = "ai"
 ) => {
   console.log('🎯 Generating ad content with params:', { 
+    companyName,
     product, 
     customers, 
     uniqueFeature, 
@@ -191,6 +241,7 @@ IMPORTANT: Your entire response must be valid JSON. Do not include any extra tex
 Respond with only a JSON array containing exactly 3 objects.
 
 Create ads for:
+Company: ${companyName}
 Product: ${product}
 Target Audience: ${customers}
 Unique Feature: ${uniqueFeature}
@@ -261,7 +312,7 @@ Guidelines:
             ad.keywords,
             1,
             index === 0 ? productImage : undefined,
-            true, // Always use AI
+            preferredImageType === "ai",
             ad.visualSuggestion,
             platform
           );
@@ -294,7 +345,7 @@ Guidelines:
           action: 'using',
           setting: 'home',
           style: 'lifestyle',
-          useAI: true // Always use AI
+          useAI: preferredImageType === "ai"
         },
         {
           mood: 'excited',
