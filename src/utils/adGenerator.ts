@@ -6,30 +6,30 @@ const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
 const pexelsClient = createClient(import.meta.env.VITE_PEXELS_API_KEY);
 
 // Helper function to get platform-specific elements
-const getPlatformElements = (platform: string) => {
-  switch (platform) {
-    case "Facebook":
-      return {
-        ctas: ["Learn More", "Shop Now", "Sign Up", "Contact Us"],
-        format: "carousel ad, video ad, or static image",
-      };
-    case "Instagram":
-      return {
-        ctas: ["Swipe Up", "Tap to Shop", "DM for Details"],
-        format: "story, reel, or carousel post",
-      };
-    case "WhatsApp":
-      return {
-        ctas: ["Message Us", "Click to Chat", "Get Quote"],
-        format: "status update or direct message",
-      };
-    default:
-      return {
-        ctas: ["Learn More", "Get Started", "Contact Now"],
-        format: "banner ad or sponsored post",
-      };
-  }
-};
+// const getPlatformElements = (platform: string) => {
+//   switch (platform) {
+//     case "Facebook":
+//       return {
+//         ctas: ["Learn More", "Shop Now", "Sign Up", "Contact Us"],
+//         format: "carousel ad, video ad, or static image",
+//       };
+//     case "Instagram":
+//       return {
+//         ctas: ["Swipe Up", "Tap to Shop", "DM for Details"],
+//         format: "story, reel, or carousel post",
+//       };
+//     case "WhatsApp":
+//       return {
+//         ctas: ["Message Us", "Click to Chat", "Get Quote"],
+//         format: "status update or direct message",
+//       };
+//     default:
+//       return {
+//         ctas: ["Learn More", "Get Started", "Contact Now"],
+//         format: "banner ad or sponsored post",
+//       };
+//   }
+// };
 
 const sanitizeJsonString = (str: string): string => {
   // Find the first '[' and last ']' to extract just the JSON array
