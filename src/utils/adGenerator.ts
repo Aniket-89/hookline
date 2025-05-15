@@ -335,87 +335,88 @@ Guidelines:
     console.error('❌ Error generating ad content:', error);
     console.log('⚠️ Falling back to default templates');
     
-    const { ctas, format } = getPlatformElements(platform);
+  //   const { ctas, format } = getPlatformElements(platform);
     
-    // Create distinctly different fallback ads
-    const fallbackAds = await Promise.all(
-      [
-        {
-          mood: 'happy',
-          action: 'using',
-          setting: 'home',
-          style: 'lifestyle',
-          useAI: preferredImageType === "ai"
-        },
-        {
-          mood: 'excited',
-          action: 'enjoying',
-          setting: 'outdoors',
-          style: 'action',
-          useAI: true
-        },
-        {
-          mood: 'peaceful',
-          action: 'showcasing',
-          setting: 'studio',
-          style: 'professional',
-          useAI: true
-        }
-      ].map(async (variation, i) => {
-        const keywords: VisualKeywords = {
-          subject: product.toLowerCase(),
-          action: variation.action,
-          mood: variation.mood,
-          setting: variation.setting
-        };
+  //   // Create distinctly different fallback ads
+  //   const fallbackAds = await Promise.all(
+  //     [
+  //       {
+  //         mood: 'happy',
+  //         action: 'using',
+  //         setting: 'home',
+  //         style: 'lifestyle',
+  //         useAI: preferredImageType === "ai"
+  //       },
+  //       {
+  //         mood: 'excited',
+  //         action: 'enjoying',
+  //         setting: 'outdoors',
+  //         style: 'action',
+  //         useAI: true
+  //       },
+  //       {
+  //         mood: 'peaceful',
+  //         action: 'showcasing',
+  //         setting: 'studio',
+  //         style: 'professional',
+  //         useAI: true
+  //       }
+  //     ].map(async (variation, i) => {
+  //       const keywords: VisualKeywords = {
+  //         subject: product.toLowerCase(),
+  //         action: variation.action,
+  //         mood: variation.mood,
+  //         setting: variation.setting
+  //       };
         
-        // Use product image for the first fallback ad if provided
-        const visualSuggestion = [
-          `Professional lifestyle ${format} showing ${keywords.mood} person ${keywords.action} ${product} in a well-lit ${keywords.setting} setting. Composition optimized for social media with negative space for text overlay. Natural, authentic feel with professional lighting.`,
-          `Dynamic commercial ${format} capturing ${keywords.mood} moment with ${product} in an aesthetic ${keywords.setting} environment. Soft, diffused lighting with subtle shadows. Modern, aspirational composition with room for text.`,
-          `Premium product ${format} featuring ${product} being ${keywords.action} in a ${keywords.mood} ${keywords.setting} scene. Studio-quality lighting with clean shadows. Minimalist, high-end composition with perfect balance.`
-        ][i];
+  //       // Use product image for the first fallback ad if provided
+  //       const visualSuggestion = [
+  //         `Professional lifestyle ${format} showing ${keywords.mood} person ${keywords.action} ${product} in a well-lit ${keywords.setting} setting. Composition optimized for social media with negative space for text overlay. Natural, authentic feel with professional lighting.`,
+  //         `Dynamic commercial ${format} capturing ${keywords.mood} moment with ${product} in an aesthetic ${keywords.setting} environment. Soft, diffused lighting with subtle shadows. Modern, aspirational composition with room for text.`,
+  //         `Premium product ${format} featuring ${product} being ${keywords.action} in a ${keywords.mood} ${keywords.setting} scene. Studio-quality lighting with clean shadows. Minimalist, high-end composition with perfect balance.`
+  //       ][i];
 
-        const { urls, type } = await searchPexelsImages(
-          keywords,
-          1,
-          i === 0 ? productImage : undefined,
-          variation.useAI,
-          visualSuggestion
-        );
+  //       const { urls, type } = await searchPexelsImages(
+  //         keywords,
+  //         1,
+  //         i === 0 ? productImage : undefined,
+  //         variation.useAI,
+  //         visualSuggestion
+  //       );
         
-        return {
-          hook: [
-            `Discover our innovative ${product}`,
-            `Transform your life with our ${product}`,
-            `Experience the magic of our ${product}`
-          ][i],
-          caption: [
-            `Designed for ${customers}, featuring ${uniqueFeature}. ${ctas[0]}!`,
-            `Perfect for ${customers}. ${uniqueFeature} makes all the difference. ${ctas[Math.min(1, ctas.length - 1)]}!`,
-            `Join countless ${customers} who love our ${uniqueFeature}. ${ctas[Math.min(2, ctas.length - 1)]}!`
-          ][i],
-          visualSuggestion: [
-            `${format} showing ${keywords.mood} person ${keywords.action} ${product} at ${keywords.setting}`,
-            `${format} capturing ${keywords.mood} moment with ${product} in ${keywords.setting}`,
-            `${format} featuring professional ${keywords.action} of ${product} in ${keywords.setting}`
-          ][i],
-          keywords,
-          imageUrl: urls[0],
-          imageType: type
-        };
-      })
-    );
+  //       return {
+  //         hook: [
+  //           `Discover our innovative ${product}`,
+  //           `Transform your life with our ${product}`,
+  //           `Experience the magic of our ${product}`
+  //         ][i],
+  //         caption: [
+  //           `Designed for ${customers}, featuring ${uniqueFeature}. ${ctas[0]}!`,
+  //           `Perfect for ${customers}. ${uniqueFeature} makes all the difference. ${ctas[Math.min(1, ctas.length - 1)]}!`,
+  //           `Join countless ${customers} who love our ${uniqueFeature}. ${ctas[Math.min(2, ctas.length - 1)]}!`
+  //         ][i],
+  //         visualSuggestion: [
+  //           `${format} showing ${keywords.mood} person ${keywords.action} ${product} at ${keywords.setting}`,
+  //           `${format} capturing ${keywords.mood} moment with ${product} in ${keywords.setting}`,
+  //           `${format} featuring professional ${keywords.action} of ${product} in ${keywords.setting}`
+  //         ][i],
+  //         keywords,
+  //         imageUrl: urls[0],
+  //         imageType: type
+  //       };
+  //     })
+  //   );
     
-    console.log('🔄 Generated fallback ads with different images:', fallbackAds);
-    return fallbackAds;
+  //   console.log('🔄 Generated fallback ads with different images:', fallbackAds);
+  //   return fallbackAds;
   }
 };
 
 export const generateAdIdeas = async (formData: FormData): Promise<AdIdea[]> => {
   console.log('📥 Received form data:', formData);
-  const { product, customers, uniqueFeature, platform, productImage } = formData;
+  const { companyName, product, customers, uniqueFeature, platform, productImage } = formData;
   const result = await generateAdContent(
+    companyName,
     product,
     customers,
     uniqueFeature,
